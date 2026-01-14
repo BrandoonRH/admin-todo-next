@@ -1,0 +1,16 @@
+meta {
+  name: Get TODO by ID
+  type: http
+  seq: 3
+}
+
+get {
+  url: http://localhost:3000/api/todos/4add696b-ad7c-497e-bb15-4087012788e9
+  body: none
+  auth: inherit
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
