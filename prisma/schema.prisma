@@ -19,6 +19,14 @@ model User {
   name  String?
 }
 
+model Employee {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar()
+  isAdmin   Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamp(6)
+  roles     String[] @default([])
+}
+
 model Todo {
   id          String   @id @default(uuid())
   description String
