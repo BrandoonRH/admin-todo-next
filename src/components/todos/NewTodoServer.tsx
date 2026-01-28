@@ -11,6 +11,7 @@ import { IoTrashOutline } from 'react-icons/io5';
 
 // ⚡ Importamos los Server Actions directamente como si fueran funciones locales
 import { addTodo, deleteCompleted } from '@/src/actions/todo-action';
+import * as todosApi from '@/src/helpers/todos';
 
 export const NewTodoServer = () => {
   // Estado para controlar lo que el usuario escribe en el input
@@ -27,7 +28,9 @@ export const NewTodoServer = () => {
 
     // 🔥 Llamada al Server Action 'addTodo'
     // Next.js se encarga de hacer la petición POST al servidor por detrás.
-    await addTodo(description);
+    /* await addTodo(description); */
+
+    await todosApi.createTodo(description)
     
     // Limpiamos el input después de crear la tarea
     setDescription('');

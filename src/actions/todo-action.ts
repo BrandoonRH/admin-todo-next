@@ -69,11 +69,11 @@ export const toggleTodo = async (
  * Crea una nueva tarea en la base de datos.
  * * @param description - El texto de la tarea.
  */
-export const addTodo = async (description: string) => {
+export const addTodo = async (description: string, userId: string) => {
   try {
     // 1. Creamos el registro indicando que por defecto no está completado.
     const todo = await prisma.todo.create({
-      data: { complete: false, description },
+      data: { complete: false, description, userId},
     });
 
     // 🔄 Notificamos el cambio para refrescar la lista en pantalla.

@@ -1,3 +1,4 @@
+import { getUserSessionServer } from "@/src/auth/actions/auth-actions"
 import { NewTodo } from "@/src/components/todos/NewTodo"
 import { TodosGrid } from "@/src/components/todos/TodosGrid"
 import prisma from "@/src/lib/prisma"
@@ -17,9 +18,13 @@ export const metadata: Metadata = {
  */
 export default async function TodosPage() {
 
+    const user = await getUserSessionServer(); 
   // Consultamos la BD directamente antes de renderizar el HTML
   const todos = await prisma.todo.findMany({
-    orderBy: { description: 'asc' }
+    orderBy: { description: 'asc' },
+    where: {
+      userId: user?.id
+    }
   });
 
   return (

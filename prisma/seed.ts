@@ -1,5 +1,6 @@
 import { PrismaClient, Prisma } from "../app/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import bcrypt from "bcryptjs";
 import "dotenv/config";
 
 // 🔌 Configuración de la conexión con el adaptador de PostgreSQL
@@ -11,16 +12,25 @@ const prisma = new PrismaClient({ adapter });
 
 // 📝 Datos de ejemplo para Usuarios
 const userData: Prisma.UserCreateInput[] = [
-  { name: "Alice", email: "alice@prisma.io" },
-  { name: "Bob", email: "bob@prisma.io" },
+  { id: "5d29f619-0f0f-42a3-ba12-a73bbfee19a6", name: "Alice", email: "alice@prisma.io", password: bcrypt.hashSync("admin123") },
 ];
 
 // 📝 Datos de ejemplo para Todos (Tareas)
-const todoData: Prisma.TodoCreateInput[] = [
-  { description: "Aprender Next.js con Prisma" },
-  { description: "Configurar el primer Seed", complete: true },
-  { description: "Dominar los Server Actions" },
-  { description: "Publicar en Vercel", complete: false },
+// Usamos Prisma.TodoCreateManyInput que NO incluye relaciones anidadas
+const todoData: Prisma.TodoCreateManyInput[] = [
+  { 
+    description: "Aprender Next.js con Prisma", 
+    userId: "5d29f619-0f0f-42a3-ba12-a73bbfee19a6" // ID directo, no relación anidada
+  },
+  {
+    description: "Aprender Ingles", 
+    userId: "5d29f619-0f0f-42a3-ba12-a73bbfee19a6" 
+  },
+  {
+    description: "Aprender Mate", 
+    userId: "5d29f619-0f0f-42a3-ba12-a73bbfee19a6" 
+  },
+
 ];
 
 export async function main() {
@@ -32,11 +42,6 @@ export async function main() {
     await prisma.user.deleteMany();
 
     console.log("👤 2. Insertando usuarios...");
-    /**
-     * MODO EFICIENTE: createMany
-     * En lugar de un 'for' que hace 10 llamadas a la DB, 
-     * createMany envía una sola instrucción SQL con todos los registros.
-     */
     await prisma.user.createMany({
       data: userData,
       skipDuplicates: true, // Evita errores si un registro ya existe

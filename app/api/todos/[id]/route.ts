@@ -1,4 +1,5 @@
 import { Todo } from '@/app/generated/prisma/client';
+import { getUserSessionServer } from '@/src/auth/actions/auth-actions';
 import prisma from '@/src/lib/prisma';
 import { NextResponse } from 'next/server';
 import * as yup from 'yup';
@@ -10,7 +11,11 @@ interface Segments {
 
 // 🔍 Función auxiliar para buscar un Todo por ID (Reutilizable)
 const getTodo = async (id: string): Promise<Todo | null> => {
-  return await prisma.todo.findFirst({ where: { id } });
+  const user = await getUserSessionServer(); 
+  if(!user) return null; 
+  const todo = await prisma.todo.findFirst({where: {id, userId: user.id}}); 
+  if(!todo) return null
+  return null
 }
 
 /**

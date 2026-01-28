@@ -1,3 +1,4 @@
+import { getUserSessionServer } from "@/src/auth/actions/auth-actions";
 import prisma from "@/src/lib/prisma";
 import { NextResponse } from "next/server";
 import * as yup from "yup";
@@ -31,12 +32,17 @@ const postSchema = yup.object({
  * POST: Crear un nuevo TODO
  */
 export async function POST(request: Request) {
+  const user = await getUserSessionServer(); 
+
+  if(!user) {
+    return NextResponse.json('No Auth', {status: 401})
+  }
   try {
     // 1. Validamos el body contra el esquema de Yup
     const { complete, description } = await postSchema.validate(await request.json());
 
     // 2. Creamos el registro en la DB
-    const todo = await prisma.todo.create({ data: { complete, description } });
+    const todo = await prisma.todo.create({ data: { complete, description, userId: user.id} });
 
     return NextResponse.json(todo);
   } catch (error) {

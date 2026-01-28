@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client"
   output   = "../app/generated/prisma"
@@ -13,24 +7,238 @@ datasource db {
   provider = "postgresql"
 }
 
-model User {
-  id    Int     @id @default(autoincrement())
-  email String  @unique
-  name  String?
-}
-
-model Employee {
-  id        Int      @id @default(autoincrement())
-  name      String   @db.VarChar()
-  isAdmin   Boolean  @default(true)
-  createdAt DateTime @default(now()) @db.Timestamp(6)
-  roles     String[] @default([])
-}
-
+/**
+ * 📝 MODELO TODO
+ * 
+ * Tabla de ejemplo para las tareas/todos de cada usuario.
+ * Cada todo pertenece a un único usuario (relación many-to-one).
+ */
 model Todo {
-  id          String   @id @default(uuid())
-  description String
-  complete    Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id          String   @id @default(uuid())  // ID único del todo
+  description String                         // Descripción de la tarea
+  complete    Boolean  @default(false)       // Estado: completado o pendiente
+  createdAt   DateTime @default(now())       // Fecha de creación
+  updatedAt   DateTime @updatedAt            // Fecha de última actualización (auto)
+  userId      String                         // ID del usuario dueño del todo
+  
+  // Relación: cada todo pertenece a un usuario
+  user   User   @relation(fields: [userId], references: [id])
 }
+
+// ============================================================================
+// 🔐 MODELOS DE NEXTAUTH (PRISMA ADAPTER)
+// ============================================================================
+// Los siguientes modelos son requeridos por NextAuth cuando usas Prisma Adapter.
+// NextAuth los usa para gestionar autenticación OAuth, sesiones y usuarios.
+// Más info: https://authjs.dev/reference/adapter/prisma
+
+/**
+ * 👤 MODELO USER
+ * 
+ * Tabla principal de usuarios. NextAuth la usa para guardar información
+ * básica de todos los usuarios (OAuth y credenciales).
+ * 
+ * CAMPOS ESTÁNDAR DE NEXTAUTH:
+ * - id, name, email, emailVerified, image
+ * 
+ * CAMPOS PERSONALIZADOS (agregados por ti):
+ * - password: Para login con credenciales (email/password)
+ * - roles: Array de roles del usuario (ej: ["user", "admin"])
+ * - isActive: Control de acceso (si está en false, no puede hacer login)
+ */
+model User {
+  // ─── Campos estándar de NextAuth ───
+  id            String          @id @default(uuid())  // ID único del usuario
+  name          String?                               // Nombre (opcional, puede venir de OAuth)
+  email         String          @unique               // Email (único en la BD)
+  password      String?                               // Password hasheado (solo para credenciales)
+  emailVerified DateTime?                             // Fecha de verificación de email (OAuth)
+  image         String?                               // URL de avatar (usualmente de OAuth)
+  
+  // ─── Campos personalizados ───
+  roles         String[]        @default(["user"])    // Roles del usuario (para autorización)
+  isActive      Boolean         @default(true)        // Usuario activo/inactivo
+  
+  // ─── Relaciones con otras tablas ───
+  accounts      Account[]                             // Cuentas OAuth vinculadas (Google, GitHub, etc)
+  sessions      Session[]                             // Sesiones activas del usuario
+  Authenticator Authenticator[]                       // Credenciales WebAuthn (passkeys, biometría)
+  todos         Todo[]                                // Todos creados por el usuario
+  
+  // ─── Timestamps ───
+  createdAt DateTime @default(now())      // Fecha de registro
+  updatedAt DateTime @updatedAt           // Última actualización (auto)
+}
+
+/**
+ * 🔗 MODELO ACCOUNT
+ * 
+ * Guarda las conexiones OAuth de cada usuario (Google, GitHub, etc).
+ * Un usuario puede tener múltiples cuentas vinculadas.
+ * 
+ * EJEMPLO:
+ * Si un usuario hace login con Google Y GitHub, tendrá 2 registros Account:
+ * - Account 1: provider = "google", userId = "123"
+ * - Account 2: provider = "github", userId = "123"
+ * 
+ * CAMPOS IMPORTANTES:
+ * - provider: Nombre del proveedor OAuth (google, github, facebook, etc)
+ * - providerAccountId: ID del usuario en ese proveedor (ej: Google User ID)
+ * - access_token: Token para hacer requests a la API del proveedor
+ * - refresh_token: Token para renovar el access_token cuando expire
+ */
+model Account {
+  userId            String   // ID del usuario dueño de esta cuenta
+  type              String   // Tipo de cuenta (usualmente "oauth")
+  provider          String   // Proveedor: "google", "github", etc
+  providerAccountId String   // ID del usuario en el proveedor (ej: Google ID)
+  
+  // ─── Tokens OAuth ───
+  refresh_token     String?  // Token para refrescar el access_token
+  access_token      String?  // Token de acceso a la API del proveedor
+  expires_at        Int?     // Timestamp de expiración del access_token
+  token_type        String?  // Tipo de token (usualmente "Bearer")
+  scope             String?  // Permisos otorgados (ej: "read:user,user:email")
+  id_token          String?  // ID token JWT (contiene info del usuario)
+  session_state     String?  // Estado de sesión (para OAuth 2.0)
+
+  // ─── Timestamps ───
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ─── Relación con User ───
+  // Cuando se elimina el usuario, se eliminan todas sus cuentas (Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // ─── Clave primaria compuesta ───
+  // Un usuario solo puede tener UNA cuenta por proveedor
+  // Ej: No puedes vincular 2 cuentas de Google al mismo usuario
+  @@id([provider, providerAccountId])
+}
+
+/**
+ * 🎫 MODELO SESSION
+ * 
+ * Guarda las sesiones activas cuando usas "database" strategy.
+ * Si usas "jwt" strategy (recomendado), esta tabla NO se usa.
+ * 
+ * NOTA: En tu configuración usas strategy: "jwt", así que NextAuth
+ * NO creará registros aquí. La sesión se guarda en el JWT token.
+ * 
+ * Esta tabla existe por si en el futuro cambias a database sessions.
+ * 
+ * ¿Cuándo usar database sessions?
+ * - Cuando necesitas revocar sesiones remotamente
+ * - Para auditoría de sesiones activas
+ * - Para limitar sesiones concurrentes por usuario
+ */
+model Session {
+  sessionToken String   @unique      // Token único de la sesión
+  userId       String                // ID del usuario de esta sesión
+  expires      DateTime              // Fecha de expiración
+  
+  // ─── Relación con User ───
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/**
+ * ✉️ MODELO VERIFICATION TOKEN
+ * 
+ * Guarda tokens temporales para:
+ * - Verificación de email
+ * - Magic links (login sin password)
+ * - Reseteo de contraseña
+ * 
+ * FLUJO TÍPICO:
+ * 1. Usuario solicita verificar email
+ * 2. Se crea un VerificationToken con expires = now() + 24h
+ * 3. Se envía email con link que contiene el token
+ * 4. Usuario hace click, el token se valida y elimina
+ * 
+ * CAMPOS:
+ * - identifier: Usualmente el email del usuario
+ * - token: String aleatorio único
+ * - expires: Fecha de expiración
+ */
+model VerificationToken {
+  identifier String   // Email u otro identificador del usuario
+  token      String   // Token único (generado aleatoriamente)
+  expires    DateTime // Fecha de expiración
+
+  // ─── Clave primaria compuesta ───
+  // Un usuario puede tener múltiples tokens (ej: uno para email, otro para reset)
+  @@id([identifier, token])
+}
+
+/**
+ * 🔐 MODELO AUTHENTICATOR (WEBAUTHN)
+ * 
+ * Soporte para autenticación sin contraseña usando WebAuthn.
+ * Permite login con:
+ * - Huella dactilar
+ * - Face ID / Touch ID
+ * - Llaves de seguridad físicas (YubiKey)
+ * - Passkeys (guardadas en el navegador o iCloud)
+ * 
+ * CAMPOS TÉCNICOS DE WEBAUTHN:
+ * - credentialID: ID único de la credencial
+ * - credentialPublicKey: Clave pública para verificar firmas
+ * - counter: Contador de usos (previene replay attacks)
+ * - credentialDeviceType: "singleDevice" o "multiDevice"
+ * - credentialBackedUp: ¿La credencial está respaldada? (iCloud, etc)
+ * - transports: Cómo se comunica el dispositivo (usb, nfc, ble, internal)
+ * 
+ * EJEMPLO DE USO:
+ * Usuario registra su iPhone con Face ID → se crea un Authenticator.
+ * Próximo login: usa Face ID en vez de password.
+ * 
+ * ⚠️ OPCIONAL: Solo necesario si implementas WebAuthn/Passkeys
+ */
+model Authenticator {
+  credentialID         String  @unique  // ID de la credencial WebAuthn
+  userId               String            // Usuario dueño de esta credencial
+  providerAccountId    String            // ID de la cuenta del proveedor
+  credentialPublicKey  String            // Clave pública (para verificación)
+  counter              Int               // Contador anti-replay
+  credentialDeviceType String            // Tipo: "single-device" o "multi-device"
+  credentialBackedUp   Boolean           // ¿Respaldada en la nube?
+  transports           String?           // Transportes: "usb,nfc,ble,internal"
+
+  // ─── Relación con User ───
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // ─── Clave primaria compuesta ───
+  @@id([userId, credentialID])
+}
+/* ```
+
+---
+
+## 📊 Diagrama de Relaciones
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                        RELACIONES                                │
+└──────────────────────────────────────────────────────────────────┘
+
+         ┌─────────────┐
+         │    USER     │ ◄─── Tabla principal
+         └──────┬──────┘
+                │
+      ┌─────────┼─────────┬─────────┬─────────────┐
+      │         │         │         │             │
+      ▼         ▼         ▼         ▼             ▼
+┌─────────┐ ┌────────┐ ┌──────┐ ┌──────────┐ ┌──────────────┐
+│ Account │ │Session │ │ Todo │ │Verif.    │ │Authenticator │
+│ (OAuth) │ │ (JWT)  │ │      │ │Token     │ │  (WebAuthn)  │
+└─────────┘ └────────┘ └──────┘ └──────────┘ └──────────────┘
+
+CARDINALIDAD:
+- 1 User → N Accounts (puede vincular Google + GitHub + etc)
+- 1 User → N Sessions (puede tener múltiples dispositivos logueados)
+- 1 User → N Todos (puede crear múltiples tareas)
+- 1 User → N Authenticators (puede registrar iPhone + Mac + YubiKey) 
+
+*/
